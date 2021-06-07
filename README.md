@@ -21,11 +21,13 @@ where `father` and `mother` are other ids in the file and sex is `1` for male, `
 
 Other options:
 
+`-p [input pedigree] [output pedigree]` - Allows for copying only the members in the chosen minimal pedigree from an associated `.ped` file to a new `.ped` file.
+
 `-i [chromosome] [start] [end] [id.haplotype]` - Allows inputing a preselected IBD at the command line, bypassing the choice at runtime.
 
 `-s [source]` - Allows inputing a preselected source at the command line, bypassing the choice at runtime. Sources should either formated as `id` an individual or `id1+id2` for a couple.
 
-`-t [timeout]` - An integer number of seconds allowed for finding all paths from a given source to the selected IBD cohort. Defaults to 10 seconds.
+`-t [timeout]` - Sets an integer number of seconds allowed for finding all paths from a given source to the selected IBD cohort.
 
 `-q` - suppresses all terminal output except that needed for user input.
 

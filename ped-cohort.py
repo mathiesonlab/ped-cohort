@@ -1,3 +1,10 @@
+"""
+Main file to find minimum pedigree from an IBD cohort to a source
+data.
+Authors: Alton Wiggers
+Date: 6/7/21
+"""
+
 #python imports
 import argparse
 import sys
@@ -10,7 +17,7 @@ import IBD
 from PedigreeTree import PedigreeTree
 from AncestorNode import AncestorNode
 
-default_timeout = 10
+default_timeout = 0
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
@@ -28,13 +35,13 @@ def parse_args(description): #argument parsing
     parser.add_argument("-o", "--output_filename", \
         help="output .txt file with minimum pedigree structure")
     parser.add_argument("-p", "--pedigree_filenames", nargs=2, \
-        help="input and output file names for an associated .ped file (2 arg format: input_ped output_ped")
+        help="input and output file names for an associated .ped file (2 arg format: -p [input_ped] [output_ped]")
     parser.add_argument("-i", "--ibd", nargs=4, \
-        help="a specific ibd to choose (4 arg format: chr start end indv)")
+        help="a specific ibd to choose (4 arg format: -i [chr] [start] [end] [indv])")
     parser.add_argument("-s", "--source", \
         help="a specific source to choose (recommended to use with -i). Please use + instead of & for couples.")
     parser.add_argument("-t", "--timeout", type=int, \
-        help="number of seconds allowed to search for paths for an individual ancestor (default is 10)")
+        help="set a number of seconds allowed to search for paths for an individual source")
     parser.add_argument("-q", "--quiet", action="store_true", \
         help="supress terminal output")
 
@@ -97,11 +104,14 @@ def main():
     
     selected_ibd = None
     if args.ibd == None: #check for ibd selection at command line
+        print("chromosome start end indv.haplotype")
+        print("-----------------------------------")
         for i in range(len(IBDs)): # print options
-            print("[" + str(i) + "] " + IBDs[i].id)
+            print("[" + str(i) + "] " + IBDs[i].id + " (cohort size: " + str(len(IBDs[i].get_indvs())) + ")")
         
         while selected_ibd == None: #continue prompt until a valid input is received
             user_in = input("Please select an IBD from the list above: ")
+            # TODO make multiple selections?
             if not user_in.isdigit() or int(user_in) < 0 or int(user_in) >= len(IBDs):
                 print("Invalid input. Please input a number from the lists above.")
             else:
@@ -144,7 +154,7 @@ def main():
         starting_indvs.append(indv)
     list_options = find_min_pedigree(ped,starting_indvs,args.source,timeout,args.quiet)
     
-    selection_number = -1
+    selection_numbers = []
 
     if len(list_options) == 0:
         print("no pedigree options were found")
@@ -154,21 +164,26 @@ def main():
             print("[" + str(i) + "] source: " + list_options[i][0] + " pedigree size: " + str(len(list_options[i][1])))
     else: #using preselected source
         print("source: " + list_options[0][0] + " pedigree size: " + str(len(list_options[0][1])))
-        selection_number = 0
+        selection_numbers = [0]
     
 
 
     if args.output_filename != None:
-        while selection_number < 0: #continue prompt until a valid input is received
-            user_in = input("Please select a set of individuals to output: ")
-            if not user_in.isdigit() or int(user_in) < 0 or int(user_in) >= len(list_options):
-                print("Invalid input. Please input a number from the lists above.")
-            else:
-                selection_number = int(user_in)
+        while len(selection_numbers) == 0: #continue prompt until a valid input is received
+            user_in = input("Please select one or more sets of individuals to output (separate with spaces): ")
+            inputs = user_in.split()
+            for input_num in inputs:
+                if not input_num.isdigit() or int() < 0 or int(input_num) >= len(list_options):
+                    print("Invalid input. Please input one or more numbers from the lists above.")
+                    selection_numbers = []
+                    break
+                else:
+                    selection_numbers.append(int(input_num))
 
-        output_list = list_options[selection_number][1]
+        for num in selection_numbers:
+            output_list += list_options[num][1]
         #write chosen pedigree to output file
-        write_to_file(args.output_filename,ped,output_list,args.quiet)
+        write_to_file(args.output_filename,ped,list(set(output_list)),args.quiet)
 
     #create ped file
     if args.pedigree_filenames != None:
@@ -203,16 +218,22 @@ def create_ped_file(input,output,ids,quiet):
     file
     """
     in_file = open(input, "r")
-    out_file = open(output, "w")
+    lines = []
 
+    #find relevant individuals in input file
     for line in in_file:
         if line.strip():
             words = line.split()
             if words[1] in ids:
-                out_file.write(line)
-    
+                lines.append(line)
     in_file.close()
+
+    #write relevant individuals to output file
+    out_file = open(output, "w")
+    for line in lines:
+        out_file.write(line)
     out_file.close()
+
     if not quiet:
         print("pedigree contents stored in " + output)
 
@@ -253,6 +274,7 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
         signal.alarm(timeout)
         try: #timeout if path finding takes too long
             ancestor_paths = ped.descendence_paths({ancestor_id : ancestor }, start_ids)
+            # TODO write own descendence_paths to make faster?
         except TimeoutException:
             if not quiet:
                 print("timeout reached")
