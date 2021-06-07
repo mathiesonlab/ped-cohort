@@ -1,0 +1,6 @@
+visualizePed.R
+*.pdf
+Rpackages
+.Renviron
+min_ped.txt
+__pycache__

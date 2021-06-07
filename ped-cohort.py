@@ -27,8 +27,10 @@ def parse_args(description): #argument parsing
         help="input GERMLINE .match file")
     parser.add_argument("-o", "--output_filename", \
         help="output .txt file with minimum pedigree structure")
+    parser.add_argument("-p", "--pedigree_filenames", nargs=2, \
+        help="input and output file names for an associated .ped file (2 arg format: input_ped output_ped")
     parser.add_argument("-i", "--ibd", nargs=4, \
-        help="a specific ibd to choose (format: chr start end indv)")
+        help="a specific ibd to choose (4 arg format: chr start end indv)")
     parser.add_argument("-s", "--source", \
         help="a specific source to choose (recommended to use with -i). Please use + instead of & for couples.")
     parser.add_argument("-t", "--timeout", type=int, \
@@ -70,7 +72,7 @@ def main():
     # assign IBDs to individuals in pedigree
     IBD.ibd_to_indvs(IBDs, ped)
 
-    """
+    '''
     i = 0
     for selected_ibd in IBDs:
         starting_indvs = []
@@ -84,13 +86,13 @@ def main():
                 #status = os.system("R --quiet --vanilla < visualizePed.R " + str(args.output_filename))
                 status = os.system("Rscript visualizePed.R " + str(args.output_filename))
                 if status != 0:
-                    print("failed early: " + str(status))
+                    print("failed early with status: " + str(status))
                     exit()
         print("completed IBD " + str(i))
         i+=1
     print("all IBDs checked successfully")
     exit()
-    """
+    '''
 
     
     selected_ibd = None
@@ -168,9 +170,14 @@ def main():
         #write chosen pedigree to output file
         write_to_file(args.output_filename,ped,output_list,args.quiet)
 
+    #create ped file
+    if args.pedigree_filenames != None:
+        create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], output_list,args.quiet)
 
 def write_to_file(filename,ped,output_list,quiet):
-    #writes ped struct to output file
+    """
+    writes ped struct to output file
+    """
     out_file = open(filename, "w")
     out_file.write("ID FATHER MOTHER SEX")
     for id in output_list:
@@ -188,6 +195,26 @@ def write_to_file(filename,ped,output_list,quiet):
     out_file.close()
     if not quiet:
         print("pedigree structure stored in " + filename)
+
+def create_ped_file(input,output,ids,quiet):
+    """
+    copies only the minimum pedigree members
+    from the input .ped file to the output .ped
+    file
+    """
+    in_file = open(input, "r")
+    out_file = open(output, "w")
+
+    for line in in_file:
+        if line.strip():
+            words = line.split()
+            if words[1] in ids:
+                out_file.write(line)
+    
+    in_file.close()
+    out_file.close()
+    if not quiet:
+        print("pedigree contents stored in " + output)
 
 
 def find_min_pedigree(ped,start_ids,source,timeout,quiet):
