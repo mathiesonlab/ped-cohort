@@ -95,6 +95,7 @@ def main():
                 if status != 0:
                     print("failed early with status: " + str(status))
                     exit()
+        
         print("completed IBD " + str(i))
         i+=1
     print("all IBDs checked successfully")
@@ -269,22 +270,39 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
 
         #find all paths from ancestor to descendents
         ancestor = shared_ancestors[ancestor_id]
-        #print(ancestor_id)
+
         signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(timeout)
         try: #timeout if path finding takes too long
-            ancestor_paths = ped.descendence_paths({ancestor_id : ancestor }, start_ids)
-            # TODO write own descendence_paths to make faster?
+            all_paths = set() #set of ancestorNodes
+            #get all paths from each start ids to source
+            for id in start_ids:
+                path_set = {}
+                ped.get_all_paths(ancestor,id,ancestor.indv.sex,path_set)
+                all_paths = all_paths | path_set.keys()
         except TimeoutException:
             if not quiet:
                 print("timeout reached")
             anc_count += 1
             continue
         signal.alarm(0)
+        
+        min_ids = []
+        for node in all_paths:
+            ids = node.indv.id.split('&')
+            for id in ids:
+                min_ids.append(id)
+            indv = ped.indvs[id]
+            #add parents
+            if node.indv.id != ancestor_id and indv.p != None and indv.m != None:
+                min_ids.append(indv.m_id)
+                min_ids.append(indv.p_id)
+        min_ids = list(set(min_ids))
+        ped_options.append((ancestor_id,min_ids))
+        
+        '''
         paths = ancestor_paths[ancestor]
-        #print("found " + str(len(paths)) +  " paths")
-        joined_paths = set().union(*paths)
-        #print("all path mems: " + str(len(joined_paths)))
+        joined_paths = set().union(paths)
 
 
         #split ids for couples
@@ -298,10 +316,13 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
                 min_ids.append(indv.m_id)
                 min_ids.append(indv.p_id)
         
+
         #removes redundant members
         min_ids = list(set(min_ids))
         ped_options.append((ancestor_id,min_ids))
         #print(min_ids)
+        '''
+
         anc_count += 1
     return ped_options
 
