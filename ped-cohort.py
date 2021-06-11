@@ -79,8 +79,12 @@ def main():
     # assign IBDs to individuals in pedigree
     IBD.ibd_to_indvs(IBDs, ped)
 
+    #testing code
+    # python3 ped-cohort.py input/extended_pedigree_final.fam output/trial1_chr21_amr_geno_germline.match -o output/trial1_chr21_cohort.fam -p output/trial1_chr21_amr_geno.ped output/trial1_chr21_amr_cohort.ped -t 10
     '''
     i = 0
+    #info_file = open("recon_info.txt","w")
+    #info_file.close()
     for selected_ibd in IBDs:
         starting_indvs = []
         for indv in selected_ibd.get_indvs():
@@ -90,14 +94,39 @@ def main():
         if args.output_filename != None:
             for option in list_options:
                 write_to_file(args.output_filename,ped,option[1],args.quiet)
-                #status = os.system("R --quiet --vanilla < visualizePed.R " + str(args.output_filename))
                 status = os.system("Rscript visualizePed.R " + str(args.output_filename))
                 if status != 0:
                     print("failed early with status: " + str(status))
                     exit()
         
+        if args.pedigree_filenames != None:
+            info_file = open("recon_info.txt","a")
+            info_file.write(selected_ibd.id + "\n")
+            info_file.close()
+            for option in list_options:
+                write_to_file(args.output_filename,ped,option[1],args.quiet)
+                create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], option[1],args.quiet)
+                os.system("germline -input output/trial1_chr21_amr_cohort.ped output/trial1_chr21_amr.map -haploid -output output/trial1_chr21_amr_cohort_germline")
+                os.system("python3 match2json.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam  -m output/trial1_chr21_amr.map -p output/trial1_chr21_amr_cohort.ped -j output/trial1_chr21_amr_cohort.json")
+                os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam -m output/trial1_chr21_amr.map -j output/trial1_chr21_amr_cohort.json -p output/trial1_chr21_amr_recon.ped")
+                ped_file = open("output/trial1_chr21_amr_recon.ped","r")
+                didReconstruct = False
+                for line in ped_file:
+                    if line.strip():
+                        words = line.split()
+                        for i in range(6,len(words)):
+                            if words[i] != '?':
+                                didReconstruct = True
+                                break
+                        if didReconstruct:
+                            break
+                ped_file.close()
+                info_file = open("recon_info.txt","a")
+                info_file.write(option[0] + " "  + str(starting_indvs) + " " + str(len(option[1])) + " "+ str(didReconstruct) +"\n")
+                info_file.close()
         print("completed IBD " + str(i))
         i+=1
+    
     print("all IBDs checked successfully")
     exit()
     '''
@@ -280,13 +309,13 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
                 path_set = {}
                 ped.get_all_paths(ancestor,id,ancestor.indv.sex,path_set)
                 all_paths = all_paths | path_set.keys()
-        except TimeoutException:
+        except TimeoutException: #skip source at timeout
             if not quiet:
                 print("timeout reached")
             anc_count += 1
             continue
         signal.alarm(0)
-        
+
         min_ids = []
         for node in all_paths:
             ids = node.indv.id.split('&')
@@ -298,30 +327,8 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
                 min_ids.append(indv.m_id)
                 min_ids.append(indv.p_id)
         min_ids = list(set(min_ids))
+
         ped_options.append((ancestor_id,min_ids))
-        
-        '''
-        paths = ancestor_paths[ancestor]
-        joined_paths = set().union(paths)
-
-
-        #split ids for couples
-        min_ids = ancestor.indv.id.split('&')
-        #add members from each node in each path
-        for node in joined_paths:
-            indv = node[0].indv
-            min_ids.append(indv.id)
-            #add parents
-            if indv.p != None and indv.m != None:
-                min_ids.append(indv.m_id)
-                min_ids.append(indv.p_id)
-        
-
-        #removes redundant members
-        min_ids = list(set(min_ids))
-        ped_options.append((ancestor_id,min_ids))
-        #print(min_ids)
-        '''
 
         anc_count += 1
     return ped_options
