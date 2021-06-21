@@ -2,7 +2,7 @@
 Main file to find minimum pedigree from an IBD cohort to a source
 data.
 Authors: Alton Wiggers
-Date: 6/7/21
+Date: 6/21/21
 """
 
 #python imports
@@ -40,22 +40,19 @@ def parse_args(description): #argument parsing
     parser.add_argument("germ_filename", \
         help="input GERMLINE .match file")
     parser.add_argument("-o", "--output_filename", \
-        help="output .txt file with minimum pedigree structure")
+        help="name for output file.")
     parser.add_argument("-p", "--pedigree_filenames", nargs=2, \
         help="input and output file names for an associated .ped file (2 arg format: -p [input_ped] [output_ped]")
-    parser.add_argument("-pikl", "--pickle_filename", \
-        help="a pickle file for saving found subpeds")
-    parser.add_argument("-i", "--ibd", nargs=4, \
-        help="a specific ibd to choose (4 arg format: -i [chr] [start] [end] [indv])")
     parser.add_argument("-s", "--source", \
-        help="a specific source to choose (recommended to use with -i). Please use + instead of & for couples.")
+        help="a specific source to choose. Please use + instead of & for couples.")
+    parser.add_argument("-m", "--max_component_size", type=int, \
+        help="the maximum bit complexity for sub-pedigrees to consider when joining sub-pedigrees to reach a target size")
     parser.add_argument("-t", "--timeout", type=int, \
         help="set a number of seconds allowed to search for paths for an individual source")
+    parser.add_argument("-pikl", "--pickle_filename", \
+        help="a pickle file for saving found subpeds")
     parser.add_argument("-q", "--quiet", action="store_true", \
         help="supress terminal output")
-
-    mandatories = ["germ_filename", "struct_filename"]
-
 
     args = parser.parse_args()
 
@@ -88,96 +85,24 @@ def main():
     # assign IBDs to individuals in pedigree
     IBD.ibd_to_indvs(IBDs, ped)
 
-    #test_code(ped,IBDs,args,timeout)
-    alternative_approach(ped,IBDs,args,timeout)
+    #get a dictionary of source IDs and their minimum possible subpedigrees
+    source_options = get_source_options(ped,IBDs,args,timeout)
 
-    
-    selected_ibd = None
-    if args.ibd == None: #check for ibd selection at command line
-        print("chromosome start end indv.haplotype")
-        print("-----------------------------------")
-        for i in range(len(IBDs)): # print options
-            print("[" + str(i) + "] " + IBDs[i].id + " (cohort size: " + str(len(IBDs[i].get_indvs())) + ")")
-        
-        while selected_ibd == None: #continue prompt until a valid input is received
-            user_in = input("Please select an IBD from the list above: ")
-            # TODO make multiple selections?
-            if not user_in.isdigit() or int(user_in) < 0 or int(user_in) >= len(IBDs):
-                print("Invalid input. Please input a number from the lists above.")
-            else:
-                selected_ibd = IBDs[int(user_in)]
-    else: #using preselected ibd
-        ibd_id = args.ibd[0] + " " + args.ibd[1] + " " + args.ibd[2] + " " + args.ibd[3]
-        for i in range(len(IBDs)):
-            if IBDs[i].id == ibd_id:
-                selected_ibd = IBDs[i]
-                break
-        if selected_ibd == None:
-            print("Could not find specified IBD")
-            exit()
-    
-    
-    """
-    ibd_set = {}
-    for ibd in IBDs:
-        id_elems = ibd.id.split()
-        id = id_elems[0] + " " + id_elems[1] + " " + id_elems[2]
-        if id in ibd_set:
-            ibd_set[id] = ibd_set[id] + [id_elems[3]]
-        else:
-            ibd_set[id] = [id_elems[3]]
-    for id in ibd_set:
-        if len(ibd_set[id]) > 1:
-            print(id + " has multiple instances: ")
-            for mem in ibd_set[id]:
-                full_id = id+" "+mem
-                for ibd in IBDs:
-                    if ibd.id == full_id:
-                        print("\t"+str(ibd.get_indvs()))
-    """
+    #test_code(ped,source_options,args,timeout)
 
-    starting_indvs = []
-    output_list = []
+    #let user select a source and desired pedigree size
+    chosen_ped = get_user_selection(ped,args,source_options)
 
-    #find minimum pedigree for all relevant sources
-    for indv in selected_ibd.get_indvs():
-        starting_indvs.append(indv)
-    list_options = find_min_pedigree(ped,starting_indvs,args.source,timeout,args.quiet)
-    
-    selection_numbers = []
-
-    if len(list_options) == 0:
-        print("no pedigree options were found")
-        exit()
-    elif args.source == None: #check for source selection at command line
-        for i in range(len(list_options)): #print options
-            print("[" + str(i) + "] source: " + list_options[i][0] + " pedigree size: " + str(len(list_options[i][1])) + " has loops: " + str(list_options[i][2]))
-    else: #using preselected source
-        print("source: " + list_options[0][0] + " pedigree size: " + str(len(list_options[0][1])) + " has loops: " + str(list_options[0][2]))
-        selection_numbers = [0]
-    
-
-
+    #create output file
     if args.output_filename != None:
-        while len(selection_numbers) == 0: #continue prompt until a valid input is received
-            user_in = input("Please select one or more sets of individuals to output (separate with spaces): ")
-            inputs = user_in.split()
-            for input_num in inputs:
-                if not input_num.isdigit() or int() < 0 or int(input_num) >= len(list_options):
-                    print("Invalid input. Please input one or more numbers from the lists above.")
-                    selection_numbers = []
-                    break
-                else:
-                    selection_numbers.append(int(input_num))
-
-        for num in selection_numbers:
-            output_list += list_options[num][1]
-        #write chosen pedigree to output file
-        write_to_file(args.output_filename,ped,list(set(output_list)),args.quiet)
+        write_to_file(args.output_filename,ped,list(set(chosen_ped.mem_ids)),args.quiet)
 
     #create ped file
     if args.pedigree_filenames != None:
-        create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], output_list,args.quiet)
+        create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], list(set(chosen_ped.mem_ids)),args.quiet)
+
+    #test_thread(chosen_ped.source,args.max_component_size)
+
 
 def write_to_file(filename,ped,output_list,quiet):
     """
@@ -231,16 +156,14 @@ def create_ped_file(input,output,ids,quiet):
 def find_min_pedigree(ped,start_ids,source,timeout,quiet):
     """
     Takes a pedigree (pedigreeTree) and a list of ids (strings).
-    Will find all shared ancestors for the starting indvs and get a list
+    Will find all shared sources for the starting indvs and get a SubPedigree
     of minimum members to cover all paths from the source to the indvs.
-    Returns a list of all found individual lists.
+    Returns a list of all found SubPedigrees.
     """
     #print("starting ids: " + str(start_ids))
 
     #find shared ancestors
     shared_ancestors = ped.find_collective_ca(start_ids)
-    #print("shared ancestors: " + str(len(shared_ancestors)))
-
 
     ped_options = []
 
@@ -296,7 +219,7 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
             if not id in min_ids:
                 married_in_count += 1
         
-        for id in min_ids:
+        for id in min_ids: #identify loops in the pedigree
             indv = ped.indvs[id]
             if indv.p != None and indv.m != None \
                 and indv.p_id + "&" + indv.m_id != ancestor_id \
@@ -304,7 +227,7 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
                 contains_loops = True
                 break
 
-        min_ids = list(set(min_ids + parent_ids))
+        min_ids = sorted(list(set(min_ids + parent_ids)))
 
         subped = SubPedigree(ancestor_id,[start_ids],min_ids)
 
@@ -313,291 +236,403 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
         anc_count += 1
     
     if not quiet:
-        #print("                                                          ", end='\r')
         print("\033[K",end='\r')
     return ped_options
 
-def alternative_approach(ped,IBDs,args,timeout):
-    
-
+def get_source_options(ped,IBDs,args,timeout):
+    """
+    get a dictionary of sources and a list of SubPedigree
+    objects for each IBD cohort with the keyed source as
+    a possible source.
+    """
 
     list_options = []
+    #check for pickle file
     if args.pickle_filename != None and os.path.exists(args.pickle_filename):
         pickle_file = open(args.pickle_filename,"rb")
         list_options = pickle.load(pickle_file)
     else:
+        #get options from each IBD cohort
         for selected_ibd in IBDs:
             starting_indvs = []
             for indv in selected_ibd.get_indvs():
                 starting_indvs.append(indv)
             list_options += find_min_pedigree(ped,starting_indvs,args.source,timeout,args.quiet)
+        #save to pickle file
         if args.pickle_filename != None:
             pickle_file = open(args.pickle_filename,"wb")
             pickle.dump(list_options,pickle_file)
             pickle_file.close()
 
     source_options = {}
+    #traverse all options and assign them to the correct source
     for option in list_options:
+        #use floats for keys
+        #TODO change this? won't work if ids aren't numeric
         numeric_id = float(option.source.replace('&','.'))
         if numeric_id in source_options:
             source_options[numeric_id] += [option]
         else:
             source_options[numeric_id] = [option]
 
-
-    #TODO change this to remove equivalent peds
-    print("removing redundant peds...",end='\r')
+    if not args.quiet:
+        print("removing redundant peds...",end='\r')
+    #remove redundant pedigrees
     for source in source_options.keys():
         options = source_options[source]
         new_options = []
+        mem_lists = []
+        #compares mem_lists of each SubPedigree
         for option in options:
-            if not option in new_options:
+            if not option.mem_ids in mem_lists:
                 new_options.append(option)
+                mem_lists.append(option.mem_ids)
         source_options[source] = new_options
-    print("\033[K",end='\r')
-    '''
-    equal_peds = 0
-    for source in source_options.keys():
-        options = source_options[source]
-        new_options = []
-        for i in range(len(options)):
-            for j in range(i+1,len(options)):
-                if set(options[i].mem_ids) == set(options[j].mem_ids):
-                    equal_peds += 1
-    print(equal_peds)
-    '''
+    if not args.quiet:
+        print("\033[K",end='\r')
 
-    i = 0
-    sorted_ids = []
-    for id in sorted(source_options.keys()):
-        if i % 20 == 0:
-            print("source\t\t\tped count\ttotal mems")
-        options = source_options[id]
-        full_ped = []
-        for option in options:
-            full_ped += option.mem_ids
-        full_ped = list(set(full_ped))
-
-        source_id = options[0].source
-
-        sorted_ids.append(source_id)
-        spacing = ""
-        while len("[" + str(i) + "] " + source_id + spacing) < 17:
-            spacing += " "
-        print("[" + str(i) + "] " + source_id + spacing + "\t" + str(len(options)) + "\t\t" + str(len(full_ped)))
-        i+= 1
+    return source_options
     
+def get_user_selection(ped,args,source_options):
+    """
+    Prompts user for source selection and target pedigree
+    size. Returns a SubPedigree of the proper size.
+    """
+
     selected_source = None
+
+    if args.source != None: #use preselected source if given in command line
+        selected_source = args.source.replace('+','&')
+    else:
+        i = 0
+        sorted_ids = []
+        #print an option for each source
+        for id in sorted(source_options.keys()):
+            options = source_options[id]
+            full_ped = []
+            valid_options = 0
+            #find the union of valid subpeds given maximum allowed complexity
+            for option in options:
+                if args.max_component_size == None or get_bit_complexity(ped,option.mem_ids) <= args.max_component_size:
+                    full_ped += option.mem_ids
+                    valid_options += 1
+            full_ped = list(set(full_ped))
+
+            source_id = options[0].source
+
+            if valid_options > 0: #only show options that have some valid subped
+                if i % 20 == 0:
+                    print("source\t\t\tped count\ttotal mems")
+                sorted_ids.append(source_id)
+                spacing = "" #adjusts spacing for clarity
+                while len("[" + str(i) + "] " + source_id + spacing) < 17:
+                    spacing += " "
+                #prints the source, the number of valid subpeds, and the total number of members in the union of all options
+                print("[" + str(i) + "] " + source_id + spacing + "\t" + str(valid_options) + "\t\t" + str(len(full_ped)))
+                i+= 1
+    
     while selected_source == None: #continue prompt until a valid input is received
         user_in = input("Please select a source from the list above: ")
         # TODO make multiple selections?
+
+        #prevent invalid input
         if not user_in.isdigit() or int(user_in) < 0 or int(user_in) >= len(sorted_ids):
             print("Invalid input. Please input a number from the lists above.")
         else:
             selected_source = sorted_ids[int(user_in)]
 
+    #convert to numeric form
     numeric_id = float(selected_source.replace('&','.'))
+
+    if not numeric_id in source_options.keys():
+        print("could not find selected source")
+        exit()
+    
+    #get SubPedigrees for the chosen source
     options = source_options[numeric_id]
 
     full_ped = []
     subpeds =[]
     min_size = len(options[0].mem_ids)
+    #find minimum and maximum size options
     for option in options:
-        full_ped += option.mem_ids
-        subpeds.append(option)
-        if len(option.mem_ids) < min_size:
-            min_size = len(option.mem_ids)
-    full_ped = list(set(full_ped))
-    print("combined ped sizes range from " + str(min_size) + " to " + str(len(full_ped)))
+        #only use valid SubPedigrees
+        if args.max_component_size == None or len(option.mem_ids) <= args.max_component_size:
+            full_ped += option.mem_ids
+            subpeds.append(option)
+            #use smallest SubPedigree for minimum size
+            if len(option.mem_ids) < min_size:
+                min_size = len(option.mem_ids)
+    full_ped = list(set(full_ped)) #use union of all SubPedigrees for maximum size
+    print("combined pedigree sizes range from " + str(min_size) + " to " + str(len(full_ped)))
 
     joined_ped = None
+    #find SubPedigree based on user selected size
     while joined_ped == None:
-        user_in = input("Please select a desired ped size: ")
-        if not user_in.isdigit() or int(user_in) < min_size or int(user_in) >= len(full_ped):
+        user_in = input("Please select a desired pedigree size in the range above: ")
+        #prevent invalid inputs
+        if not user_in.isdigit() or int(user_in) < min_size or int(user_in) > len(full_ped):
             print("Invalid input. Please input a number in the range above.")
         else:
             target_size = int(user_in)
-
-            table = []
-            for i in range(len(subpeds)):
-                row = []
-                for j in range(len(full_ped)):
-                    row.append(None)
-                table.append(row)
-
-            if sys.getrecursionlimit() < len(full_ped)**2:
-                sys.setrecursionlimit(len(full_ped)**2) 
-
-            low_option,high_option = join_peds(table,subpeds,target_size,SubPedigree(selected_source,[],[]),0)
+            #search for options of target size
+            low_option,high_option = find_joined_ped(selected_source,subpeds,target_size,len(full_ped))
+            
+            #found SubPedigree of exact specified size
             if low_option == high_option:
                 joined_ped = low_option
-                print("found ped of exact size")
-                #print(table)
+
+                cohort_min = target_size
+                cohort_max = 0
+                #find minimum and maximum sizes of joined subpeds
+                for min_ped in subpeds:
+                    if min_ped.cohorts[0] in joined_ped.cohorts:
+                        if len(min_ped.mem_ids) < cohort_min:
+                            cohort_min = len(min_ped.mem_ids)
+                        if len(min_ped.mem_ids) > cohort_max:
+                            cohort_max = len(min_ped.mem_ids)
+
+                #print outcome
+                if not args.quiet:
+                    print("found pedigree of desired size by joining sub-peds of sizes "  + str(cohort_min) + "-" + str(cohort_max)   + \
+                    " from " + str(len(joined_ped.cohorts)) + " different IBD cohorts")
+            #If not exact pedigree was found, show closest sizes and reprompt
             else:
                 print("could not be matched exactly, closest sizes are " + str(len(low_option.mem_ids)) + " and " + str(len(high_option.mem_ids)))
     
-
-    #create output file
-    if args.output_filename != None:
-        write_to_file(args.output_filename,ped,list(set(joined_ped.mem_ids)),args.quiet)
-
-    #create ped file
-    if args.pedigree_filenames != None:
-        create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], list(set(joined_ped.mem_ids)),args.quiet)
+    return joined_ped
 
 
+def find_joined_ped(source,subpeds,target_size,max_size):
+    """
+    Base call for recursive algorithm to join subpeds to
+    get a subped of target size. Uses dynamic approach.
 
+    Uses a dynamic approach with a table that has # subpeds
+    rows and maximum pedigree size columns (size of the union
+    of all subpeds).
 
-    exit()
+    Returns closest Subpedigrees above and below the
+    target size.
+    """
+    #create table for dynamic approach
+    table = []
+    for i in range(len(subpeds)): #create rows
+        row = []
+        for j in range(max_size): #create columns
+            row.append(None) #all cell start as 'None'
+        table.append(row)
+
+    #increase recursion limit
+    if sys.getrecursionlimit() < max_size**2:
+        sys.setrecursionlimit(max_size**2)
+
+    #make first recursive call.
+    low_option,high_option = join_peds(table,subpeds,target_size,SubPedigree(source,[],[]),0)
+    return low_option,high_option
+
 
 def join_peds(table,subpeds,target_size,current_ped,list_num):
-    '''
-    returns closest subpeds below and above target size
-    '''
+    """
+    Recursive step for joining SubPedigrees.
+    returns closest subpeds below and above target size.
+
+    At each iterationtable indexed by list_num (the first
+    list_num cohort subpeds that have been checked) and list_size
+    (the size of the current given SubPedigree).
+    """
     list_size = len(current_ped.mem_ids)
 
+    '''Base Cases'''
+
+    #case: if the best SubPedigree has already been computed
     if table[list_num][list_size] != None:
         return table[list_num][list_size][0],table[list_num][list_size][1]
 
+    #add the list_num cohort ped to the current ped
     new_cohorts = current_ped.cohorts + subpeds[list_num].cohorts
     new_mem_ids = list(set(current_ped.mem_ids + subpeds[list_num].mem_ids))
     new_ped = SubPedigree(current_ped.source,new_cohorts,new_mem_ids)
 
+    #case: we've found a subped of target size
     if len(new_mem_ids) == target_size:
         table[list_num][list_size] = (new_ped,new_ped)
         return new_ped,new_ped
+    #we are at the last cohort subped
     elif list_num + 1 == len(subpeds):
         table[list_num][list_size] = (current_ped,new_ped)
         return current_ped,new_ped
     
+    '''Recursive Cases'''
+
     low_option = current_ped
     high_option = None
 
+    
     if len(new_ped.mem_ids) > target_size:
         high_option = new_ped
-
-    else:
-        low_option = new_ped
+    else: #only need to join more peds if new_ped size is less than target size
+        low_option = new_ped #target_size > new_ped size >= current_ped size
+        #case: join new_ped with subpeds after list_num (keep subpeds[list_num] in the union)
         recurse_low,recurse_high = join_peds(table,subpeds,target_size,new_ped,list_num+1)
-        high_option = recurse_high
+        high_option = recurse_high #take the only high option
+        #pick the better low option
         if len(recurse_low.mem_ids) > len(low_option.mem_ids):
-            print("rl2 chose " + str(len(recurse_low.mem_ids)) + " over " + str(len(low_option.mem_ids)))
             low_option = recurse_low
 
     if len(low_option.mem_ids) != target_size and len(high_option.mem_ids) != target_size:
+        #case: join current_ped with subpeds after list_num (don't keep subpeds[list_num] in the union)
         recurse_low,recurse_high = join_peds(table,subpeds,target_size,current_ped,list_num+1)
+        #pick the better low option
         if len(recurse_low.mem_ids) > len(low_option.mem_ids):
-            print("rl1 chose " + str(len(recurse_low.mem_ids)) + " over " + str(len(low_option.mem_ids)))
             low_option = recurse_low
+        #pick the better high option
         if len(recurse_high.mem_ids) >= target_size and len(recurse_high.mem_ids) < len(high_option.mem_ids):
-            print("rh1 chose " + str(len(recurse_high.mem_ids)) + " over " + str(len(high_option.mem_ids)))
             high_option = recurse_high
     
+    #if either option is of target size, set both options to be the target size option
     if len(low_option.mem_ids) == target_size:
         high_option = low_option
     elif len(high_option.mem_ids) == target_size:
         low_option = high_option
     
+    #fill out the table
     table[list_num][list_size] = (low_option,high_option)
     return low_option,high_option
 
 
+def get_bit_complexity(ped,mem_ids):
+    """
+    calculate the bit complexity of a pedigree
+    based on a list of member ids.
+    """
+    n = 0
+    f = 0
+    g = []
+    for id in mem_ids:
+        indv = ped.indvs[id]
+        #check if parents are in the pedigree
+        if indv.p_id in mem_ids and indv.m_id in mem_ids:
+            n += 1
+        else:
+            f +=1
+            #add couples that are both founders
+            for couple in indv.couples:
+                if not couple in g \
+                    and couple.p.id in mem_ids and couple.m.id in mem_ids \
+                    and not couple.p.p_id and not couple.p.m_id in mem_ids \
+                    and not couple.m.p_id and not couple.m.m_id in mem_ids:
+                    g.append(couple)
+
     
-    
+    return 2*n-f-len(g)
 
 
 
+def test_thread(source_id,max):
+    os.system("rm output/trial1_chr21_amr_recon.ped")
+    os.system("germline -input output/trial1_chr21_amr_cohort.ped output/trial1_chr21_amr.map -haploid -output output/trial1_chr21_amr_cohort_germline")
+    os.system("python3 match2json.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam  -m output/trial1_chr21_amr.map -p output/trial1_chr21_amr_cohort.ped -j output/trial1_chr21_amr_cohort.json")
+    status = os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam -m output/trial1_chr21_amr.map -j output/trial1_chr21_amr_cohort.json -p output/trial1_chr21_amr_recon.ped")
+    os.system("Rscript visualizePed.R output/trial1_chr21_cohort.fam " + "ped_visuals/" + str(source_id).replace(".","+")+"_"+str(max) + ".pdf")
 
-def test_code(ped,IBDs,args,timeout):
+
+
+def test_code(ped,source_options,args,timeout):
     #testing code
-    # python3 ped-cohort.py input/extended_pedigree_final.fam output/trial1_chr21_amr_geno_germline.match -o output/trial1_chr21_cohort.fam -p output/trial1_chr21_amr_geno.ped output/trial1_chr21_amr_cohort.ped -t 10
-    
+    # python3 ped-cohort.py input/extended_pedigree_final.fam output/trial1_chr21_amr_geno_germline.match -o output/trial1_chr21_cohort.fam -p output/trial1_chr21_amr_geno.ped output/trial1_chr21_amr_cohort.ped -pikl pickled_subpeds -q
     
     i = 0
-    #info_file = open("recon_info.txt","w")
-    #info_file.close()
-    #info_file = open("geno_info.txt","w")
-    #info_file.close()
-    #info_file = open("loop_info.txt","w")
-    #info_file.close()
+    info_file = open("recon_info.txt","w")
+    info_file.close()
+    
+    component_maxes = [20,25,30,35,40]
 
-    for selected_ibd in IBDs:
+    for source_id in source_options:
 
-        starting_indvs = []
-        for indv in selected_ibd.get_indvs():
-            starting_indvs.append(indv)
-        list_options = find_min_pedigree(ped,starting_indvs,args.source,timeout,args.quiet)
-        
-        if False and args.output_filename != None:
-            for option in list_options:
-                write_to_file(args.output_filename,ped,option[1],args.quiet)
-                status = os.system("Rscript visualizePed.R " + str(args.output_filename))
-                if status != 0:
-                    print("failed early with status: " + str(status))
-                    exit()
+        source_name = str(source_id).replace('.','&')
 
-        if False:
-            info_file = open("loop_info.txt","a")
-            info_file.write(selected_ibd.id + "\n")
-            info_file.close()
-            for option in list_options:
-                info_file = open("loop_info.txt","a")
-                info_file.write(str(option[0]) + " " + str(option[3]) + "\n")
-                info_file.close()
-        
-        if False and args.pedigree_filenames != None:
-            info_file = open("geno_info.txt","a")
-            info_file.write(selected_ibd.id + "\n")
-            info_file.close()
-            for option in list_options:
-                write_to_file(args.output_filename,ped,option[1],args.quiet)
-                create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], option[1],args.quiet)
-                ped_file = open(args.pedigree_filenames[1],"r")
-                num_genotyped = 0
-                for line in ped_file:
-                    genotyped = False
-                    if line.strip():
-                        words = line.split()
-                        for j in range(6,len(words)):
-                            if words[j] != '?':
-                                genotyped = True
-                                break
-                        if genotyped:
-                            num_genotyped += 1
-                info_file = open("geno_info.txt","a")
-                info_file.write(str(num_genotyped) + "\n")
-                info_file.close()
-                
-
-        if False and args.pedigree_filenames != None:
+        if args.pedigree_filenames != None:
             info_file = open("recon_info.txt","a")
-            info_file.write(selected_ibd.id + "\n")
+            info_file.write(str(source_name) + "\n")
             info_file.close()
-            for option in list_options:
-                write_to_file(args.output_filename,ped,option[1],args.quiet)
-                create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], option[1],args.quiet)
+
+            options = source_options[source_id]
+
+            ped_options = []
+            comp_sizes = []
+
+            for component_size in component_maxes:
+                full_ped = []
+                subpeds =[]
+                min_size = len(options[0].mem_ids)
+                for option in options:
+                    if get_bit_complexity(ped,option.mem_ids) <= component_size:
+                        full_ped += option.mem_ids
+                        subpeds.append(option)
+                        if len(option.mem_ids) < min_size:
+                            min_size = len(option.mem_ids)
+                full_ped = list(set(full_ped))
+
+                if len(full_ped) > 0:
+                    low_option,high_option = find_joined_ped(source_name,subpeds,len(full_ped),len(full_ped))
+                    if not high_option in ped_options:
+                        ped_options.append(high_option)
+                        comp_sizes.append(component_size)
+
+
+            for k in range(len(ped_options)):
+                option = ped_options[k]
+                write_to_file(args.output_filename,ped,option.mem_ids,args.quiet)
+                create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1],option.mem_ids,args.quiet)
+                os.system("rm output/trial1_chr21_amr_recon.ped")
                 os.system("germline -input output/trial1_chr21_amr_cohort.ped output/trial1_chr21_amr.map -haploid -output output/trial1_chr21_amr_cohort_germline")
                 os.system("python3 match2json.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam  -m output/trial1_chr21_amr.map -p output/trial1_chr21_amr_cohort.ped -j output/trial1_chr21_amr_cohort.json")
-                os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam -m output/trial1_chr21_amr.map -j output/trial1_chr21_amr_cohort.json -p output/trial1_chr21_amr_recon.ped")
-                ped_file = open("output/trial1_chr21_amr_recon.ped","r")
-                didReconstruct = False
-                for line in ped_file:
-                    if line.strip():
-                        words = line.split()
-                        for j in range(6,len(words)):
-                            if words[j] != '?':
-                                didReconstruct = True
+                status = os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam -m output/trial1_chr21_amr.map -j output/trial1_chr21_amr_cohort.json -p output/trial1_chr21_amr_recon.ped")
+                os.system("Rscript visualizePed.R output/trial1_chr21_cohort.fam " + "ped_visuals/" + str(source_id).replace(".","+")+"_"+str(k) + ".pdf")
+                
+                if True or status == 0:
+                    ped_file = open("output/trial1_chr21_amr_recon.ped","r")
+                    recon_count = 0
+                    for line in ped_file:
+                        if line.strip():
+                            words = line.split()
+                            for j in range(6,len(words)):
+                                if words[j] != '?':
+                                    recon_count += 1
+                                    break
+                    ped_file.close()
+
+                    ped_file = open(args.pedigree_filenames[1],"r")
+                    geno_count = 0
+                    for line in ped_file:
+                        if line.strip():
+                            words = line.split()
+                            for j in range(6,len(words)):
+                                if words[j] != '?':
+                                    geno_count += 1
+                                    break
+                    ped_file.close()
+
+                    complexity = get_bit_complexity(ped,option.mem_ids)
+
+                    info_file = open("recon_info.txt","a")
+                    info_file.write(str(comp_sizes[k]) + " " + str(len(option.mem_ids)) + " " + str(geno_count) + " " + str(recon_count) + " " + str(complexity) + "\n")
+
+                    if k < len(ped_options) - 1:
+                        index = component_maxes.index(comp_sizes[k])
+                        for l in range(1,len(component_maxes)-index):
+                            if comp_sizes[k+1] != component_maxes[index+l]:
+                                info_file.write(str(comp_maxes[index+l]) + " " + str(len(option.mem_ids)) + " " + str(geno_count) + " " + str(recon_count)+ " " + str(complexity) +"\n")
+                            else:
                                 break
-                        if didReconstruct:
-                            break
-                ped_file.close()
-                info_file = open("recon_info.txt","a")
-                info_file.write(option[0] + " "  + str(len(starting_indvs)) + " " + str(len(option[1])) + " " + str(option[2]) + " " + str(didReconstruct) +"\n")
-                info_file.close()
-        print("completed IBD " + str(i))
+
+                    info_file.close()
+
+        print("source " + str(i) + " completed")
         i+=1
     
-    print("all IBDs checked successfully")
+    print("all sources checked successfully")
     exit()
     
 

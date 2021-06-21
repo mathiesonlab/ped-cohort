@@ -19,15 +19,19 @@ where `father` and `mother` are other ids in the file and sex is `1` for male, `
 
 `output file` will be a text file in the same format as `struct file`.
 
+`ped-cohort` will prompt the user to select a single IBD source identified in the pedigree. The user will then select a desired pedigree size and `ped-cohort` will merge minimum pedigrees containing various IBD cohorts and the selected source to get a pedigree of the desired size.
+
 Other options:
 
-`-p [input pedigree] [output pedigree]` - Allows for copying only the members in the chosen minimal pedigree from an associated `.ped` file to a new `.ped` file.
+`-p [input pedigree] [output pedigree]` - Allows for copying only the members in the chosen sub-pedigree from an associated `.ped` file to a new `.ped` file.
 
-`-i [chromosome] [start] [end] [id.haplotype]` - Allows inputing a preselected IBD at the command line, bypassing the choice at runtime.
+`-s [source]` - Allows inputing a preselected source at the command line, bypassing the choice at runtime. Sources should either formated as `id` for an individual or `id1+id2` for a couple.
 
-`-s [source]` - Allows inputing a preselected source at the command line, bypassing the choice at runtime. Sources should either formated as `id` an individual or `id1+id2` for a couple.
+`-m [maximum component complexity]` - Sets an integer number for a maximum bit complexity for component IBD cohort graphs. Bit complexity is `2n-f-g` where `n` is the number of non-founding pedigree members, `f` is the number of founding members, and `g` is the number of ungenotyped founding couples.
 
 `-t [timeout]` - Sets an integer number of seconds allowed for finding all paths from a given source to the selected IBD cohort.
+
+`pikl [pickle file]` - Allows the use of the python `pickle` package to save all sources and their assigned IBDs. If the file name does not exist in the current directory, `ped-cohort` will save a pickle file under this name. If the file does exist, `ped-cohort` will load the given pickle file.
 
 `-q` - suppresses all terminal output except that needed for user input.
 
