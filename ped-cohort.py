@@ -43,6 +43,8 @@ def parse_args(description): #argument parsing
         help="name for output file.")
     parser.add_argument("-p", "--pedigree_filenames", nargs=2, \
         help="input and output file names for an associated .ped file (2 arg format: -p [input_ped] [output_ped]")
+    parser.add_argument("-c", "--component_filename", \
+        help="a prefix for .ped files for all components that made up the final pedigree will output [component_filename]_i.ped for i components.")
     parser.add_argument("-s", "--source", \
         help="a specific source to choose. Please use + instead of & for couples.")
     parser.add_argument("-m", "--max_component_size", type=int, \
@@ -76,26 +78,26 @@ def main():
         timeout = args.timeout
 
     # construct pedigree data structure
-    ped = PedigreeTree(args.struct_filename)
+    ped_tree = PedigreeTree(args.struct_filename)
     left_out = []
 
     # construct IBDs data structures (type: list)
     IBDs = IBD.get_IBDs(args.germ_filename, left_out) # toggle to leave out
 
     # assign IBDs to individuals in pedigree
-    IBD.ibd_to_indvs(IBDs, ped)
+    IBD.ibd_to_indvs(IBDs, ped_tree)
 
     #get a dictionary of source IDs and their minimum possible subpedigrees
-    source_options = get_source_options(ped,IBDs,args,timeout)
+    source_options = get_source_options(ped_tree,IBDs,args,timeout)
 
-    #test_code(ped,source_options,args,timeout)
+    #test_code(ped_tree,source_options,args,timeout)
 
     #let user select a source and desired pedigree size
-    chosen_ped = get_user_selection(ped,args,source_options)
+    chosen_ped = get_user_selection(ped_tree,args,source_options)
 
     #create output file
     if args.output_filename != None:
-        write_to_file(args.output_filename,ped,list(set(chosen_ped.mem_ids)),args.quiet)
+        write_to_file(args.output_filename,ped_tree,list(set(chosen_ped.mem_ids)),args.quiet)
 
     #create ped file
     if args.pedigree_filenames != None:
@@ -104,14 +106,14 @@ def main():
     #test_thread(chosen_ped.source,args.max_component_size)
 
 
-def write_to_file(filename,ped,output_list,quiet):
+def write_to_file(filename,ped_tree,output_list,quiet):
     """
     writes ped struct to output file
     """
     out_file = open(filename, "w")
     out_file.write("ID FATHER MOTHER SEX")
     for id in output_list:
-        indv = ped.indvs[id]
+        indv = ped_tree.indvs[id]
         #changes parents to 0 if they are not in the pedigree
         p = '0'
         m = '0'
@@ -153,7 +155,7 @@ def create_ped_file(input,output,ids,quiet):
         print("pedigree contents stored in " + output)
 
 
-def find_min_pedigree(ped,start_ids,source,timeout,quiet):
+def find_min_pedigree(ped_tree,start_ids,source,timeout,quiet):
     """
     Takes a pedigree (pedigreeTree) and a list of ids (strings).
     Will find all shared sources for the starting indvs and get a SubPedigree
@@ -163,7 +165,7 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
     #print("starting ids: " + str(start_ids))
 
     #find shared ancestors
-    shared_ancestors = ped.find_collective_ca(start_ids)
+    shared_ancestors = ped_tree.find_collective_ca(start_ids)
 
     ped_options = []
 
@@ -190,7 +192,7 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
             #get all paths from each start ids to source
             for id in start_ids:
                 path_set = {}
-                ped.get_all_paths(ancestor,id,ancestor.indv.sex,path_set)
+                ped_tree.get_all_paths(ancestor,id,ancestor.indv.sex,path_set)
                 all_paths = all_paths | path_set.keys()
         except TimeoutException: #skip source at timeout
             if not quiet:
@@ -207,7 +209,7 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
             ids = node.indv.id.split('&')
             for id in ids:
                 min_ids.append(id)
-            indv = ped.indvs[id]
+            indv = ped_tree.indvs[id]
             #add parents
             if node.indv.id != ancestor_id and indv.p != None and indv.m != None:
                 parent_ids.append(indv.m_id)
@@ -220,13 +222,13 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
                 married_in_count += 1
         
         for id in min_ids: #identify loops in the pedigree
-            indv = ped.indvs[id]
+            indv = ped_tree.indvs[id]
             if indv.p != None and indv.m != None \
                 and indv.p_id + "&" + indv.m_id != ancestor_id \
                 and indv.p_id in min_ids and indv.m_id in min_ids:
                 contains_loops = True
                 break
-
+        #sort ids for later comparisons
         min_ids = sorted(list(set(min_ids + parent_ids)))
 
         subped = SubPedigree(ancestor_id,[start_ids],min_ids)
@@ -239,7 +241,7 @@ def find_min_pedigree(ped,start_ids,source,timeout,quiet):
         print("\033[K",end='\r')
     return ped_options
 
-def get_source_options(ped,IBDs,args,timeout):
+def get_source_options(ped_tree,IBDs,args,timeout):
     """
     get a dictionary of sources and a list of SubPedigree
     objects for each IBD cohort with the keyed source as
@@ -257,7 +259,7 @@ def get_source_options(ped,IBDs,args,timeout):
             starting_indvs = []
             for indv in selected_ibd.get_indvs():
                 starting_indvs.append(indv)
-            list_options += find_min_pedigree(ped,starting_indvs,args.source,timeout,args.quiet)
+            list_options += find_min_pedigree(ped_tree,starting_indvs,args.source,timeout,args.quiet)
         #save to pickle file
         if args.pickle_filename != None:
             pickle_file = open(args.pickle_filename,"wb")
@@ -293,7 +295,7 @@ def get_source_options(ped,IBDs,args,timeout):
 
     return source_options
     
-def get_user_selection(ped,args,source_options):
+def get_user_selection(ped_tree,args,source_options):
     """
     Prompts user for source selection and target pedigree
     size. Returns a SubPedigree of the proper size.
@@ -313,7 +315,7 @@ def get_user_selection(ped,args,source_options):
             valid_options = 0
             #find the union of valid subpeds given maximum allowed complexity
             for option in options:
-                if args.max_component_size == None or get_bit_complexity(ped,option.mem_ids) <= args.max_component_size:
+                if args.max_component_size == None or get_bit_complexity(ped_tree,option.mem_ids) <= args.max_component_size:
                     full_ped += option.mem_ids
                     valid_options += 1
             full_ped = list(set(full_ped))
@@ -327,7 +329,6 @@ def get_user_selection(ped,args,source_options):
                 spacing = "" #adjusts spacing for clarity
                 while len("[" + str(i) + "] " + source_id + spacing) < 17:
                     spacing += " "
-                #prints the source, the number of valid subpeds, and the total number of members in the union of all options
                 print("[" + str(i) + "] " + source_id + spacing + "\t" + str(valid_options) + "\t\t" + str(len(full_ped)))
                 i+= 1
     
@@ -357,14 +358,14 @@ def get_user_selection(ped,args,source_options):
     #find minimum and maximum size options
     for option in options:
         #only use valid SubPedigrees
-        if args.max_component_size == None or len(option.mem_ids) <= args.max_component_size:
+        if args.max_component_size == None or get_bit_complexity(ped_tree,option.mem_ids) <= args.max_component_size:
             full_ped += option.mem_ids
             subpeds.append(option)
             #use smallest SubPedigree for minimum size
             if len(option.mem_ids) < min_size:
                 min_size = len(option.mem_ids)
     full_ped = list(set(full_ped)) #use union of all SubPedigrees for maximum size
-    print("combined pedigree sizes range from " + str(min_size) + " to " + str(len(full_ped)))
+    print("for " + selected_source + " combined pedigree sizes range from " + str(min_size) + " to " + str(len(full_ped)))
 
     joined_ped = None
     #find SubPedigree based on user selected size
@@ -396,6 +397,10 @@ def get_user_selection(ped,args,source_options):
                 if not args.quiet:
                     print("found pedigree of desired size by joining sub-peds of sizes "  + str(cohort_min) + "-" + str(cohort_max)   + \
                     " from " + str(len(joined_ped.cohorts)) + " different IBD cohorts")
+                
+                if args.component_filename != None:
+                    create_component_files(ped_tree,args,joined_ped,subpeds)
+                
             #If not exact pedigree was found, show closest sizes and reprompt
             else:
                 print("could not be matched exactly, closest sizes are " + str(len(low_option.mem_ids)) + " and " + str(len(high_option.mem_ids)))
@@ -501,7 +506,65 @@ def join_peds(table,subpeds,target_size,current_ped,list_num):
     return low_option,high_option
 
 
-def get_bit_complexity(ped,mem_ids):
+def create_component_files(ped_tree,args,full_ped,subpeds):
+
+    components = get_ped_components(full_ped,subpeds)
+    pedfile_lines = open(args.pedigree_filenames[0],"r").readlines()
+
+    
+
+    line_dict = {}
+
+    markers = len(pedfile_lines[0].split()) - 6
+
+    for line in pedfile_lines:
+        words = line.split()
+        line_dict[words[1]] = words
+    
+    #print(sorted(line_dict.keys()))
+    print(markers)
+
+    for i in range(len(components)):
+        if not args.quiet:
+            print("creating component file " + str(i+1) + "/" + str(len(components)),end='\r')
+        component = components[i]
+        outfile_name = args.component_filename + "_" + str(i) + ".ped"
+        outfile = open(outfile_name, "w")
+        for id in component.mem_ids:
+            indv = ped_tree.indvs[id]
+            dad = "0"
+            mom = "0"
+            if indv.p_id in component.mem_ids and indv.m_id in component.mem_ids:
+                dad = indv.p_id
+                mom = indv.m_id
+            out_line = "1 " + id + " " + dad + " " + mom + " " + str(indv.sex) + " 0"
+            if id in line_dict.keys():
+                words = line_dict[id]
+                for j in range(6,len(words)):
+                    out_line += " " + words[j]
+            else:
+                for j in range(markers):
+                    out_line += " 0"
+            outfile.write(out_line + "\n")
+        outfile.close()
+        if not args.quiet:
+            print("\033[K",end='\r')
+
+    
+
+def get_ped_components(full_ped,subpeds):
+    components = []
+    for cohort in full_ped.cohorts:
+        for subped in subpeds:
+            if subped.cohorts[0] == cohort:
+                components.append(subped)
+                break
+    print(len(components))
+    return components
+
+
+
+def get_bit_complexity(ped_tree,mem_ids):
     """
     calculate the bit complexity of a pedigree
     based on a list of member ids.
@@ -510,7 +573,7 @@ def get_bit_complexity(ped,mem_ids):
     f = 0
     g = []
     for id in mem_ids:
-        indv = ped.indvs[id]
+        indv = ped_tree.indvs[id]
         #check if parents are in the pedigree
         if indv.p_id in mem_ids and indv.m_id in mem_ids:
             n += 1
@@ -538,7 +601,7 @@ def test_thread(source_id,max):
 
 
 
-def test_code(ped,source_options,args,timeout):
+def test_code(ped_tree,source_options,args,timeout):
     #testing code
     # python3 ped-cohort.py input/extended_pedigree_final.fam output/trial1_chr21_amr_geno_germline.match -o output/trial1_chr21_cohort.fam -p output/trial1_chr21_amr_geno.ped output/trial1_chr21_amr_cohort.ped -pikl pickled_subpeds -q
     
@@ -583,7 +646,7 @@ def test_code(ped,source_options,args,timeout):
 
             for k in range(len(ped_options)):
                 option = ped_options[k]
-                write_to_file(args.output_filename,ped,option.mem_ids,args.quiet)
+                write_to_file(args.output_filename,ped_tree,option.mem_ids,args.quiet)
                 create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1],option.mem_ids,args.quiet)
                 os.system("rm output/trial1_chr21_amr_recon.ped")
                 os.system("germline -input output/trial1_chr21_amr_cohort.ped output/trial1_chr21_amr.map -haploid -output output/trial1_chr21_amr_cohort_germline")
@@ -614,7 +677,7 @@ def test_code(ped,source_options,args,timeout):
                                     break
                     ped_file.close()
 
-                    complexity = get_bit_complexity(ped,option.mem_ids)
+                    complexity = get_bit_complexity(ped_tree,option.mem_ids)
 
                     info_file = open("recon_info.txt","a")
                     info_file.write(str(comp_sizes[k]) + " " + str(len(option.mem_ids)) + " " + str(geno_count) + " " + str(recon_count) + " " + str(complexity) + "\n")

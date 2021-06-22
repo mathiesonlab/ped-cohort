@@ -5,3 +5,5 @@ Rpackages
 min_ped.txt
 __pycache__
 pickled_subpeds
+components
+geno_file.ped
