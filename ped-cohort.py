@@ -2,14 +2,12 @@
 Main file to find minimum pedigree from an IBD cohort to a source
 data.
 Authors: Alton Wiggers
-Date: 6/21/21
+Date: 7/8/21
 """
 
 #python imports
 import argparse
 import sys
-import time
-import signal
 import pickle
 import os #used for testing
 
@@ -17,8 +15,6 @@ import os #used for testing
 import IBD
 from PedigreeTree import PedigreeTree
 from AncestorNode import AncestorNode
-
-default_timeout = 0
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
@@ -49,8 +45,6 @@ def parse_args(description): #argument parsing
         help="a specific source to choose. Please use + instead of & for couples.")
     parser.add_argument("-m", "--max_component_size", type=int, \
         help="the maximum bit complexity for sub-pedigrees to consider when joining sub-pedigrees to reach a target size")
-    parser.add_argument("-t", "--timeout", type=int, \
-        help="set a number of seconds allowed to search for paths for an individual source")
     parser.add_argument("-pikl", "--pickle_filename", \
         help="a pickle file for saving found subpeds")
     parser.add_argument("-q", "--quiet", action="store_true", \
@@ -60,22 +54,11 @@ def parse_args(description): #argument parsing
 
     return args
 
-class TimeoutException(Exception): #timeout exception class
-    pass
-
-def timeout_handler(signum, frame): #timeout signal handler
-    raise TimeoutException
-
 
 def main():
 
     #parse arguments
     args = parse_args("pedigree args")
-
-    #set timeout
-    timeout=default_timeout
-    if args.timeout != None:
-        timeout = args.timeout
 
     # construct pedigree data structure
     ped_tree = PedigreeTree(args.struct_filename)
@@ -88,9 +71,9 @@ def main():
     IBD.ibd_to_indvs(IBDs, ped_tree)
 
     #get a dictionary of source IDs and their minimum possible subpedigrees
-    source_options = get_source_options(ped_tree,IBDs,args,timeout)
+    source_options = get_source_options(ped_tree,IBDs,args)
 
-    #test_code(ped_tree,source_options,args,timeout)
+    test_code_compare(ped_tree,source_options,args)
 
     #let user select a source and desired pedigree size
     chosen_ped = get_user_selection(ped_tree,args,source_options)
@@ -155,7 +138,7 @@ def create_ped_file(input,output,ids,quiet):
         print("pedigree contents stored in " + output)
 
 
-def find_min_pedigree(ped_tree,start_ids,source,timeout,quiet):
+def find_min_pedigree(ped_tree,start_ids,source,quiet):
     """
     Takes a pedigree (pedigreeTree) and a list of ids (strings).
     Will find all shared sources for the starting indvs and get a SubPedigree
@@ -185,21 +168,12 @@ def find_min_pedigree(ped_tree,start_ids,source,timeout,quiet):
         #find all paths from ancestor to descendents
         ancestor = shared_ancestors[ancestor_id]
 
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(timeout)
-        try: #timeout if path finding takes too long
-            all_paths = set() #set of ancestorNodes
-            #get all paths from each start ids to source
-            for id in start_ids:
-                path_set = {}
-                ped_tree.get_all_paths(ancestor,id,ancestor.indv.sex,path_set)
-                all_paths = all_paths | path_set.keys()
-        except TimeoutException: #skip source at timeout
-            if not quiet:
-                print("timeout reached")
-            anc_count += 1
-            continue
-        signal.alarm(0)
+        all_paths = set() #set of ancestorNodes
+        #get all paths from each start ids to source
+        for id in start_ids:
+            path_set = {}
+            ped_tree.get_all_paths(ancestor,id,ancestor.indv.sex,path_set)
+            all_paths = all_paths | path_set.keys()
 
         contains_loops = False
 
@@ -241,7 +215,7 @@ def find_min_pedigree(ped_tree,start_ids,source,timeout,quiet):
         print("\033[K",end='\r')
     return ped_options
 
-def get_source_options(ped_tree,IBDs,args,timeout):
+def get_source_options(ped_tree,IBDs,args):
     """
     get a dictionary of sources and a list of SubPedigree
     objects for each IBD cohort with the keyed source as
@@ -259,7 +233,7 @@ def get_source_options(ped_tree,IBDs,args,timeout):
             starting_indvs = []
             for indv in selected_ibd.get_indvs():
                 starting_indvs.append(indv)
-            list_options += find_min_pedigree(ped_tree,starting_indvs,args.source,timeout,args.quiet)
+            list_options += find_min_pedigree(ped_tree,starting_indvs,args.source,args.quiet)
         #save to pickle file
         if args.pickle_filename != None:
             pickle_file = open(args.pickle_filename,"wb")
@@ -269,13 +243,10 @@ def get_source_options(ped_tree,IBDs,args,timeout):
     source_options = {}
     #traverse all options and assign them to the correct source
     for option in list_options:
-        #use floats for keys
-        #TODO change this? won't work if ids aren't numeric
-        numeric_id = float(option.source.replace('&','.'))
-        if numeric_id in source_options:
-            source_options[numeric_id] += [option]
+        if option.source in source_options:
+            source_options[option.source] += [option]
         else:
-            source_options[numeric_id] = [option]
+            source_options[option.source] = [option]
 
     if not args.quiet:
         print("removing redundant peds...",end='\r')
@@ -342,15 +313,12 @@ def get_user_selection(ped_tree,args,source_options):
         else:
             selected_source = sorted_ids[int(user_in)]
 
-    #convert to numeric form
-    numeric_id = float(selected_source.replace('&','.'))
-
-    if not numeric_id in source_options.keys():
+    if not selected_source in source_options.keys():
         print("could not find selected source")
         exit()
     
     #get SubPedigrees for the chosen source
-    options = source_options[numeric_id]
+    options = source_options[selected_source]
 
     full_ped = []
     subpeds =[]
@@ -522,14 +490,17 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
         line_dict[words[1]] = words
     
     #print(sorted(line_dict.keys()))
-    print(markers)
+    #print(markers)
 
     for i in range(len(components)):
         if not args.quiet:
             print("creating component file " + str(i+1) + "/" + str(len(components)),end='\r')
         component = components[i]
         outfile_name = args.component_filename + "_" + str(i) + ".ped"
+        textfile_name = args.component_filename + "_" + str(i) + ".txt"
         outfile = open(outfile_name, "w")
+        textfile = open(textfile_name, "w")
+        textfile.write("ID FATHER MOTHER SEX")
         for id in component.mem_ids:
             indv = ped_tree.indvs[id]
             dad = "0"
@@ -537,7 +508,9 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
             if indv.p_id in component.mem_ids and indv.m_id in component.mem_ids:
                 dad = indv.p_id
                 mom = indv.m_id
-            out_line = "1 " + id + " " + dad + " " + mom + " " + str(indv.sex) + " 0"
+            out_line = id + " " + dad + " " + mom + " " + str(indv.sex)
+            textfile.write("\n" + out_line)
+            out_line = "1 " + out_line #+ " 0"
             if id in line_dict.keys():
                 words = line_dict[id]
                 for j in range(6,len(words)):
@@ -547,8 +520,11 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
                     out_line += " 0"
             outfile.write(out_line + "\n")
         outfile.close()
+        textfile.close()
         if not args.quiet:
             print("\033[K",end='\r')
+    
+    return len(components)
 
     
 
@@ -559,7 +535,7 @@ def get_ped_components(full_ped,subpeds):
             if subped.cohorts[0] == cohort:
                 components.append(subped)
                 break
-    print(len(components))
+    #print(len(components))
     return components
 
 
@@ -592,16 +568,80 @@ def get_bit_complexity(ped_tree,mem_ids):
 
 
 
-def test_thread(source_id,max):
-    os.system("rm output/trial1_chr21_amr_recon.ped")
-    os.system("germline -input output/trial1_chr21_amr_cohort.ped output/trial1_chr21_amr.map -haploid -output output/trial1_chr21_amr_cohort_germline")
-    os.system("python3 match2json.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam  -m output/trial1_chr21_amr.map -p output/trial1_chr21_amr_cohort.ped -j output/trial1_chr21_amr_cohort.json")
-    status = os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam -m output/trial1_chr21_amr.map -j output/trial1_chr21_amr_cohort.json -p output/trial1_chr21_amr_recon.ped")
-    os.system("Rscript visualizePed.R output/trial1_chr21_cohort.fam " + "ped_visuals/" + str(source_id).replace(".","+")+"_"+str(max) + ".pdf")
+def test_thread(file_id,args):
+    thread_output = "../ped-cohort/comparison_files/" + file_id + ".ped"
+    fam_input = "../ped-cohort/"+args.output_filename
+    ped_input = "../ped-cohort/"+args.pedigree_filenames[1]
+    os.chdir("../amish_sim_pipeline")
+    status = os.system("germline -input " + ped_input + " ./output/trial1_chr21_amr.map -haploid -output ./output/germline_test")
+    status = os.system("python3 match2json.py -g output/germline_test.match -s " + fam_input + " -m output/trial1_chr21_amr.map -p "+ ped_input + " -j output/thread_test.json")
+    if status != 0:
+        exit()
+    status = os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/germline_test.match -s " + fam_input + "  -m output/trial1_chr21_amr.map -j output/thread_test.json -p " + thread_output)
+    os.system("Rscript visualizePed.R " + ped_input + " ped_visuals/" + file_id + ".pdf")
+    os.chdir("../ped-cohort")
+    return status
+
+def test_merlin(out_path,ped_file):
+    ped_input = "../ped-cohort/"+ped_file
+    os.chdir("../merlin")
+    status = os.system("./merlin -d amish_merlin.dat -p " + ped_input + " -m amish_merlin.map --two --best --horizontal --swap --megabytes 99999999")
+    if status == 0:
+        os.system("mv merlin.chr ../ped-cohort/"+out_path)
+    else:
+        exit()
+    os.chdir("../ped-cohort")
+
+def test_code_compare(ped_tree,source_options,args):
+    #completed '91864&95445' '63154&20165','20029&62869','84909&91869','81065&91877' 
+    #'5000','5000&5001','1721&1722','1717&1718','20070&62958','1718','1723&1724','1801',
+    #'15537&46055','1701&1702','1954&1955','81073&84912','1707&1708','1801&1802'
+    #spruce '93645&84927','44963&15197','88667','88667&84911'
+    #willow '1719&172','1850&1851','1901&1902','86146&84938'
+    #pine '1952&19522','84451&81916','5000&20196','16463&49838'
+    #errored
+    sample_sources = ['1719&172','1850&1851','1901&1902','86146&84938']
+
+    for source_id in source_options:
+
+        if not source_id in sample_sources:
+            continue
+
+        options = source_options[source_id]
+        full_ped = []
+        subpeds =[]
+        cohorts = []
+        for option in options:
+            if get_bit_complexity(ped_tree,option.mem_ids) <= args.max_component_size:
+                full_ped += option.mem_ids
+                subpeds.append(option)
+                cohorts.append(option.cohorts[0])
+        full_ped = list(set(full_ped))
+
+        joined_ped = SubPedigree(source_id,cohorts,full_ped)
+
+        file_id = source_id.replace('&','+') + "_" + str(args.max_component_size)
+
+        if len(full_ped) > 0:
+            write_to_file(args.output_filename,ped_tree,joined_ped.mem_ids,args.quiet)
+            create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1],joined_ped.mem_ids,args.quiet)
+            status = test_thread(file_id,args)
+            if status == 0:
+                comp_count = create_component_files(ped_tree,args,joined_ped,subpeds)
+                os.system("mkdir comparison_files/"+file_id+"_components")
+                for i in range(comp_count):
+                    ped_file = args.component_filename + "_" + str(i) + ".ped"
+                    text_file = args.component_filename + "_" + str(i) + ".txt"
+                    out_path = "comparison_files/"+file_id+"_components/"+file_id+"_comp"+str(i)+".chr"
+                    test_merlin(out_path,ped_file)
+                    os.system("rm " + ped_file)
+                    os.system("rm " + text_file)
+            else:
+                exit()
+                
 
 
-
-def test_code(ped_tree,source_options,args,timeout):
+def test_code_comp_sizes(ped_tree,source_options,args):
     #testing code
     # python3 ped-cohort.py input/extended_pedigree_final.fam output/trial1_chr21_amr_geno_germline.match -o output/trial1_chr21_cohort.fam -p output/trial1_chr21_amr_geno.ped output/trial1_chr21_amr_cohort.ped -pikl pickled_subpeds -q
     
@@ -613,11 +653,9 @@ def test_code(ped_tree,source_options,args,timeout):
 
     for source_id in source_options:
 
-        source_name = str(source_id).replace('.','&')
-
         if args.pedigree_filenames != None:
             info_file = open("recon_info.txt","a")
-            info_file.write(str(source_name) + "\n")
+            info_file.write(str(source_id) + "\n")
             info_file.close()
 
             options = source_options[source_id]
@@ -628,17 +666,14 @@ def test_code(ped_tree,source_options,args,timeout):
             for component_size in component_maxes:
                 full_ped = []
                 subpeds =[]
-                min_size = len(options[0].mem_ids)
                 for option in options:
-                    if get_bit_complexity(ped,option.mem_ids) <= component_size:
+                    if get_bit_complexity(ped_tree,option.mem_ids) <= component_size:
                         full_ped += option.mem_ids
                         subpeds.append(option)
-                        if len(option.mem_ids) < min_size:
-                            min_size = len(option.mem_ids)
                 full_ped = list(set(full_ped))
 
                 if len(full_ped) > 0:
-                    low_option,high_option = find_joined_ped(source_name,subpeds,len(full_ped),len(full_ped))
+                    low_option,high_option = find_joined_ped(source_id,subpeds,len(full_ped),len(full_ped))
                     if not high_option in ped_options:
                         ped_options.append(high_option)
                         comp_sizes.append(component_size)
@@ -652,7 +687,7 @@ def test_code(ped_tree,source_options,args,timeout):
                 os.system("germline -input output/trial1_chr21_amr_cohort.ped output/trial1_chr21_amr.map -haploid -output output/trial1_chr21_amr_cohort_germline")
                 os.system("python3 match2json.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam  -m output/trial1_chr21_amr.map -p output/trial1_chr21_amr_cohort.ped -j output/trial1_chr21_amr_cohort.json")
                 status = os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam -m output/trial1_chr21_amr.map -j output/trial1_chr21_amr_cohort.json -p output/trial1_chr21_amr_recon.ped")
-                os.system("Rscript visualizePed.R output/trial1_chr21_cohort.fam " + "ped_visuals/" + str(source_id).replace(".","+")+"_"+str(k) + ".pdf")
+                os.system("Rscript visualizePed.R output/trial1_chr21_cohort.fam " + "ped_visuals/" + str(source_id).replace("&","+")+"_"+str(k) + ".pdf")
                 
                 if True or status == 0:
                     ped_file = open("output/trial1_chr21_amr_recon.ped","r")
