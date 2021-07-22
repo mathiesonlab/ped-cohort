@@ -73,8 +73,6 @@ def main():
     #get a dictionary of source IDs and their minimum possible subpedigrees
     source_options = get_source_options(ped_tree,IBDs,args)
 
-    test_code_compare(ped_tree,source_options,args)
-
     #let user select a source and desired pedigree size
     chosen_ped = get_user_selection(ped_tree,args,source_options)
 
@@ -488,10 +486,6 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
     for line in pedfile_lines:
         words = line.split()
         line_dict[words[1]] = words
-    
-    #print(sorted(line_dict.keys()))
-    #print(markers)
-
     for i in range(len(components)):
         if not args.quiet:
             print("creating component file " + str(i+1) + "/" + str(len(components)),end='\r')
@@ -565,176 +559,6 @@ def get_bit_complexity(ped_tree,mem_ids):
 
     
     return 2*n-f-len(g)
-
-
-
-def test_thread(file_id,args):
-    thread_output = "../ped-cohort/comparison_files/" + file_id + ".ped"
-    fam_input = "../ped-cohort/"+args.output_filename
-    ped_input = "../ped-cohort/"+args.pedigree_filenames[1]
-    os.chdir("../amish_sim_pipeline")
-    status = os.system("germline -input " + ped_input + " ./output/trial1_chr21_amr.map -haploid -output ./output/germline_test")
-    status = os.system("python3 match2json.py -g output/germline_test.match -s " + fam_input + " -m output/trial1_chr21_amr.map -p "+ ped_input + " -j output/thread_test.json")
-    if status != 0:
-        exit()
-    status = os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/germline_test.match -s " + fam_input + "  -m output/trial1_chr21_amr.map -j output/thread_test.json -p " + thread_output)
-    os.system("Rscript visualizePed.R " + ped_input + " ped_visuals/" + file_id + ".pdf")
-    os.chdir("../ped-cohort")
-    return status
-
-def test_merlin(out_path,ped_file):
-    ped_input = "../ped-cohort/"+ped_file
-    os.chdir("../merlin")
-    status = os.system("./merlin -d amish_merlin.dat -p " + ped_input + " -m amish_merlin.map --two --best --horizontal --swap --megabytes 99999999")
-    if status == 0:
-        os.system("mv merlin.chr ../ped-cohort/"+out_path)
-    else:
-        exit()
-    os.chdir("../ped-cohort")
-
-def test_code_compare(ped_tree,source_options,args):
-    #completed '91864&95445' '63154&20165','20029&62869','84909&91869','81065&91877' 
-    #'5000','5000&5001','1721&1722','1717&1718','20070&62958','1718','1723&1724','1801',
-    #'15537&46055','1701&1702','1954&1955','81073&84912','1707&1708','1801&1802'
-    #spruce '93645&84927','44963&15197','88667','88667&84911'
-    #willow '1719&172','1850&1851','1901&1902','86146&84938'
-    #pine '1952&19522','84451&81916','5000&20196','16463&49838'
-    #errored
-    sample_sources = ['1719&172','1850&1851','1901&1902','86146&84938']
-
-    for source_id in source_options:
-
-        if not source_id in sample_sources:
-            continue
-
-        options = source_options[source_id]
-        full_ped = []
-        subpeds =[]
-        cohorts = []
-        for option in options:
-            if get_bit_complexity(ped_tree,option.mem_ids) <= args.max_component_size:
-                full_ped += option.mem_ids
-                subpeds.append(option)
-                cohorts.append(option.cohorts[0])
-        full_ped = list(set(full_ped))
-
-        joined_ped = SubPedigree(source_id,cohorts,full_ped)
-
-        file_id = source_id.replace('&','+') + "_" + str(args.max_component_size)
-
-        if len(full_ped) > 0:
-            write_to_file(args.output_filename,ped_tree,joined_ped.mem_ids,args.quiet)
-            create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1],joined_ped.mem_ids,args.quiet)
-            status = test_thread(file_id,args)
-            if status == 0:
-                comp_count = create_component_files(ped_tree,args,joined_ped,subpeds)
-                os.system("mkdir comparison_files/"+file_id+"_components")
-                for i in range(comp_count):
-                    ped_file = args.component_filename + "_" + str(i) + ".ped"
-                    text_file = args.component_filename + "_" + str(i) + ".txt"
-                    out_path = "comparison_files/"+file_id+"_components/"+file_id+"_comp"+str(i)+".chr"
-                    test_merlin(out_path,ped_file)
-                    os.system("rm " + ped_file)
-                    os.system("rm " + text_file)
-            else:
-                exit()
-                
-
-
-def test_code_comp_sizes(ped_tree,source_options,args):
-    #testing code
-    # python3 ped-cohort.py input/extended_pedigree_final.fam output/trial1_chr21_amr_geno_germline.match -o output/trial1_chr21_cohort.fam -p output/trial1_chr21_amr_geno.ped output/trial1_chr21_amr_cohort.ped -pikl pickled_subpeds -q
-    
-    i = 0
-    info_file = open("recon_info.txt","w")
-    info_file.close()
-    
-    component_maxes = [20,25,30,35,40]
-
-    for source_id in source_options:
-
-        if args.pedigree_filenames != None:
-            info_file = open("recon_info.txt","a")
-            info_file.write(str(source_id) + "\n")
-            info_file.close()
-
-            options = source_options[source_id]
-
-            ped_options = []
-            comp_sizes = []
-
-            for component_size in component_maxes:
-                full_ped = []
-                subpeds =[]
-                for option in options:
-                    if get_bit_complexity(ped_tree,option.mem_ids) <= component_size:
-                        full_ped += option.mem_ids
-                        subpeds.append(option)
-                full_ped = list(set(full_ped))
-
-                if len(full_ped) > 0:
-                    low_option,high_option = find_joined_ped(source_id,subpeds,len(full_ped),len(full_ped))
-                    if not high_option in ped_options:
-                        ped_options.append(high_option)
-                        comp_sizes.append(component_size)
-
-
-            for k in range(len(ped_options)):
-                option = ped_options[k]
-                write_to_file(args.output_filename,ped_tree,option.mem_ids,args.quiet)
-                create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1],option.mem_ids,args.quiet)
-                os.system("rm output/trial1_chr21_amr_recon.ped")
-                os.system("germline -input output/trial1_chr21_amr_cohort.ped output/trial1_chr21_amr.map -haploid -output output/trial1_chr21_amr_cohort_germline")
-                os.system("python3 match2json.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam  -m output/trial1_chr21_amr.map -p output/trial1_chr21_amr_cohort.ped -j output/trial1_chr21_amr_cohort.json")
-                status = os.system("PYTHONHASHSEED=1833 python3 thread.py -g output/trial1_chr21_amr_cohort_germline.match -s output/trial1_chr21_cohort.fam -m output/trial1_chr21_amr.map -j output/trial1_chr21_amr_cohort.json -p output/trial1_chr21_amr_recon.ped")
-                os.system("Rscript visualizePed.R output/trial1_chr21_cohort.fam " + "ped_visuals/" + str(source_id).replace("&","+")+"_"+str(k) + ".pdf")
-                
-                if True or status == 0:
-                    ped_file = open("output/trial1_chr21_amr_recon.ped","r")
-                    recon_count = 0
-                    for line in ped_file:
-                        if line.strip():
-                            words = line.split()
-                            for j in range(6,len(words)):
-                                if words[j] != '?':
-                                    recon_count += 1
-                                    break
-                    ped_file.close()
-
-                    ped_file = open(args.pedigree_filenames[1],"r")
-                    geno_count = 0
-                    for line in ped_file:
-                        if line.strip():
-                            words = line.split()
-                            for j in range(6,len(words)):
-                                if words[j] != '?':
-                                    geno_count += 1
-                                    break
-                    ped_file.close()
-
-                    complexity = get_bit_complexity(ped_tree,option.mem_ids)
-
-                    info_file = open("recon_info.txt","a")
-                    info_file.write(str(comp_sizes[k]) + " " + str(len(option.mem_ids)) + " " + str(geno_count) + " " + str(recon_count) + " " + str(complexity) + "\n")
-
-                    if k < len(ped_options) - 1:
-                        index = component_maxes.index(comp_sizes[k])
-                        for l in range(1,len(component_maxes)-index):
-                            if comp_sizes[k+1] != component_maxes[index+l]:
-                                info_file.write(str(comp_maxes[index+l]) + " " + str(len(option.mem_ids)) + " " + str(geno_count) + " " + str(recon_count)+ " " + str(complexity) +"\n")
-                            else:
-                                break
-
-                    info_file.close()
-
-        print("source " + str(i) + " completed")
-        i+=1
-    
-    print("all sources checked successfully")
-    exit()
-    
-
-    
 
 if __name__ == "__main__":
     main()
