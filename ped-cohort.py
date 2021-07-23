@@ -2,7 +2,7 @@
 Main file to find minimum pedigree from an IBD cohort to a source
 data.
 Authors: Alton Wiggers
-Date: 7/8/21
+Date: 7/23/21
 """
 
 #python imports

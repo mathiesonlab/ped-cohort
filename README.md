@@ -24,6 +24,7 @@ where `father` and `mother` are other ids in the file and sex is `1` for male, `
 Other options:
 
 `-p [input pedigree] [output pedigree]` - Allows for copying only the members in the chosen sub-pedigree from an associated `.ped` file to a new `.ped` file.
+The `.ped` file should follow the plink ped format (https://www.cog-genomics.org/plink2/formats#ped).
 
 `-c [component file name]` - A prefix for .ped files and corresponding .txt struct files for all component IBD cohort pedigrees that made up the final chosen pedigree. This will output `[component_filename]_[i].ped` and `[component_filename]_[i].txt` for the `i`th component. It's recommended to have these files output in a subdirectory because this can result in many files.
 
@@ -38,4 +39,4 @@ Other options:
 created by:
 * Alton Wiggers (`ahwiggers`)
 
-requires `thread` package.
+uses `AncestorNode.py`, `Couple.py`, `IBD.py`, `Individual.py`, and `PedigreeTree.py` from `thread` package (https://github.com/mathiesonlab/thread).
