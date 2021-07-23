@@ -84,8 +84,6 @@ def main():
     if args.pedigree_filenames != None:
         create_ped_file(args.pedigree_filenames[0], args.pedigree_filenames[1], list(set(chosen_ped.mem_ids)),args.quiet)
 
-    #test_thread(chosen_ped.source,args.max_component_size)
-
 
 def write_to_file(filename,ped_tree,output_list,quiet):
     """
@@ -473,43 +471,56 @@ def join_peds(table,subpeds,target_size,current_ped,list_num):
 
 
 def create_component_files(ped_tree,args,full_ped,subpeds):
+    """
+    Creates a .ped file for each component that made up
+    the final chosen pedigree.
+    """
 
+    #get list of components
     components = get_ped_components(full_ped,subpeds)
     pedfile_lines = open(args.pedigree_filenames[0],"r").readlines()
 
-    
-
     line_dict = {}
 
+    #find the number of SNP markers in each line of the pedigree
     markers = len(pedfile_lines[0].split()) - 6
 
+    #create a dictionary of all lines in the full pedigree
     for line in pedfile_lines:
         words = line.split()
         line_dict[words[1]] = words
-    for i in range(len(components)):
+
+    
+    for i in range(len(components)): #iterate through the components
         if not args.quiet:
             print("creating component file " + str(i+1) + "/" + str(len(components)),end='\r')
+        #create files
         component = components[i]
         outfile_name = args.component_filename + "_" + str(i) + ".ped"
         textfile_name = args.component_filename + "_" + str(i) + ".txt"
         outfile = open(outfile_name, "w")
         textfile = open(textfile_name, "w")
-        textfile.write("ID FATHER MOTHER SEX")
-        for id in component.mem_ids:
+        textfile.write("ID FATHER MOTHER SEX") #write header
+
+
+        for id in component.mem_ids: #write line for each member of the component pedigree
             indv = ped_tree.indvs[id]
+            #only put parents for an individual if they are also in the component pedigree
             dad = "0"
             mom = "0"
             if indv.p_id in component.mem_ids and indv.m_id in component.mem_ids:
                 dad = indv.p_id
                 mom = indv.m_id
+            #write line to .txt file
             out_line = id + " " + dad + " " + mom + " " + str(indv.sex)
             textfile.write("\n" + out_line)
+            #write line to .ped file
             out_line = "1 " + out_line #+ " 0"
-            if id in line_dict.keys():
+            if id in line_dict.keys(): #write haplotypes if known
                 words = line_dict[id]
                 for j in range(6,len(words)):
                     out_line += " " + words[j]
-            else:
+            else: #write zeros if haplotypes are unknown
                 for j in range(markers):
                     out_line += " 0"
             outfile.write(out_line + "\n")
@@ -523,6 +534,11 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
     
 
 def get_ped_components(full_ped,subpeds):
+    """
+    Searches through a list of subpeds and
+    find which are components of the full ped
+    based on the cohorts in the full ped.
+    """
     components = []
     for cohort in full_ped.cohorts:
         for subped in subpeds:

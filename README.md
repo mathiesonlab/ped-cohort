@@ -25,11 +25,11 @@ Other options:
 
 `-p [input pedigree] [output pedigree]` - Allows for copying only the members in the chosen sub-pedigree from an associated `.ped` file to a new `.ped` file.
 
+`-c [component file name]` - A prefix for .ped files and corresponding .txt struct files for all component IBD cohort pedigrees that made up the final chosen pedigree. This will output `[component_filename]_[i].ped` and `[component_filename]_[i].txt` for the `i`th component. It's recommended to have these files output in a subdirectory because this can result in many files.
+
 `-s [source]` - Allows inputing a preselected source at the command line, bypassing the choice at runtime. Sources should either formated as `id` for an individual or `id1+id2` for a couple.
 
-`-m [maximum component complexity]` - Sets an integer number for a maximum bit complexity for component IBD cohort graphs. Bit complexity is `2n-f-g` where `n` is the number of non-founding pedigree members, `f` is the number of founding members, and `g` is the number of ungenotyped founding couples.
-
-`-t [timeout]` - Sets an integer number of seconds allowed for finding all paths from a given source to the selected IBD cohort.
+`-m [maximum component complexity]` - Sets an integer number for a maximum bit complexity for component IBD cohort pedigrees. Bit complexity is `2n-f-g` where `n` is the number of non-founding pedigree members, `f` is the number of founding members, and `g` is the number of ungenotyped founding couples.
 
 `pikl [pickle file]` - Allows the use of the python `pickle` package to save all sources and their assigned IBDs. If the file name does not exist in the current directory, `ped-cohort` will save a pickle file under this name. If the file does exist, `ped-cohort` will load the given pickle file.
 
