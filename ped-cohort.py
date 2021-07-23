@@ -478,17 +478,21 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
 
     #get list of components
     components = get_ped_components(full_ped,subpeds)
-    pedfile_lines = open(args.pedigree_filenames[0],"r").readlines()
 
-    line_dict = {}
+    pedfile_lines = None
+    if args.pedigree_filenames != None:
+        pedfile_lines = open(args.pedigree_filenames[0],"r").readlines()
 
-    #find the number of SNP markers in each line of the pedigree
-    markers = len(pedfile_lines[0].split()) - 6
+    if pedfile_lines != None: #only create ped files if pedigree input is specified
+        line_dict = {}
 
-    #create a dictionary of all lines in the full pedigree
-    for line in pedfile_lines:
-        words = line.split()
-        line_dict[words[1]] = words
+        #find the number of SNP markers in each line of the pedigree
+        markers = len(pedfile_lines[0].split()) - 6
+
+        #create a dictionary of all lines in the full pedigree
+        for line in pedfile_lines:
+            words = line.split()
+            line_dict[words[1]] = words
 
     
     for i in range(len(components)): #iterate through the components
@@ -498,7 +502,8 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
         component = components[i]
         outfile_name = args.component_filename + "_" + str(i) + ".ped"
         textfile_name = args.component_filename + "_" + str(i) + ".txt"
-        outfile = open(outfile_name, "w")
+        if pedfile_lines != None:
+            outfile = open(outfile_name, "w")
         textfile = open(textfile_name, "w")
         textfile.write("ID FATHER MOTHER SEX") #write header
 
@@ -514,17 +519,19 @@ def create_component_files(ped_tree,args,full_ped,subpeds):
             #write line to .txt file
             out_line = id + " " + dad + " " + mom + " " + str(indv.sex)
             textfile.write("\n" + out_line)
-            #write line to .ped file
-            out_line = "1 " + out_line #+ " 0"
-            if id in line_dict.keys(): #write haplotypes if known
-                words = line_dict[id]
-                for j in range(6,len(words)):
-                    out_line += " " + words[j]
-            else: #write zeros if haplotypes are unknown
-                for j in range(markers):
-                    out_line += " 0"
-            outfile.write(out_line + "\n")
-        outfile.close()
+            if pedfile_lines != None:
+                #write line to .ped file
+                out_line = "1 " + out_line #+ " 0"
+                if id in line_dict.keys(): #write haplotypes if known
+                    words = line_dict[id]
+                    for j in range(6,len(words)):
+                        out_line += " " + words[j]
+                else: #write zeros if haplotypes are unknown
+                    for j in range(markers):
+                        out_line += " 0"
+                outfile.write(out_line + "\n")
+        if pedfile_lines != None:
+            outfile.close()
         textfile.close()
         if not args.quiet:
             print("\033[K",end='\r')

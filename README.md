@@ -34,7 +34,7 @@ $ python3 ped-cohort.py example/toy_pedigree.txt example/toy_germline.match -o e
 `-p [input pedigree] [output pedigree]` - Allows for copying only the members in the chosen sub-pedigree from an associated `.ped` file to a new `.ped` file.
 The `.ped` file should follow the plink ped format (https://www.cog-genomics.org/plink2/formats#ped).
 
-`-c [component file name]` - A prefix for `.ped` files and corresponding struct files for all component IBD cohort pedigrees that made up the final chosen pedigree. This will output `[component_filename]_[i].ped` and `[component_filename]_[i].txt` for the `i`th component. It's recommended to have these files output in a subdirectory because this can result in many files.
+`-c [component file name]` - A prefix for `.txt` struct files for all component IBD cohort pedigrees that made up the final chosen pedigree. This will output `[component_filename]_[i].txt` for the `i`th component. If `-p` is specified this will also create a `[component_filename]_[i].ped` file. It's recommended to have these files output in a subdirectory because this can result in many files.
 
 `-s [source]` - Allows inputing a preselected source at the command line, bypassing the choice at runtime. Sources should either formatted as `id` for an individual or `id1+id2` for a couple.
 
